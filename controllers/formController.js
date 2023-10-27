@@ -60,7 +60,7 @@ const editForm = async (req, res) => {
         }
       }
       let fullName = req.body.fullName || form.fullName;
-      if(!req.user.hidden){
+      if (!req.user.hidden) {
         await Log.create({
           type: "تعديل",
           user: req.user.name,
@@ -113,7 +113,7 @@ const createForm = async (req, res) => {
           tmp.addressNubmer = res["المقاطعه"];
           tmp.area = res["المساحه"];
           tmp.assignDate = res["تاريخ التخصيص"];
-          tmp.beneficiary =true;// res["مستفيد"]?.includes("مستفيد")?true:false ;
+          tmp.beneficiary = true;// res["مستفيد"]?.includes("مستفيد")?true:false ;
           tmp.formNumber = res["رقم معرف"];
           tmp.note = res["الملاحظه"];
           data.push(tmp);
@@ -152,14 +152,29 @@ const createForm = async (req, res) => {
   } = req.body;
   // if (!req.body.fullName && !req.file)
   //   return res.status(400).json("data is not completed");
-   console.log(req.body);
-  
+  console.log(req.body);
+
 
   try {
-    let size = await Form.find({}).sort({ formNumber: -1 }).limit(1)
-    const numbers = await Print.find({}).sort({number:-1}).limit(1);
-   //   console.log(forms)
-    
+    let sz = await Form.aggregate([
+      {
+        $project: {
+          formNumber: {
+            $toInt: "$formNumber"
+          }
+        }
+      },
+      {
+        $sort: {
+          formNumber: -1
+        }
+      },{
+        $limit:1
+      }
+    ]);
+    const numbers = await Print.find({}).sort({ number: -1 }).limit(1);
+    //   console.log(forms)
+
     if (department) {
       Class.findOneAndUpdate(
         {
@@ -201,7 +216,7 @@ const createForm = async (req, res) => {
       birthDate,
       birthPlace,
       fullName,
-      formNumber:  size.length?size[0].formNumber * 1 + 1 : 1 ,
+      formNumber: sz[0] ? sz[0].formNumber * 1 + 1 : 1,
       beneficiary: req.body.b ? false : true,
       createdBy: req.user.fullName,
       note
@@ -215,8 +230,8 @@ const createForm = async (req, res) => {
         system: os.platform(),
         ip: IP.address(),
       });
-    } else if(!req.user.hidden){
-       Log.create({
+    } else if (!req.user.hidden) {
+      Log.create({
         type: "اضافه ملف excel",
         user: req.user.name,
         details: `اضافه ملف اكسل جديد`,
@@ -234,17 +249,30 @@ const createForm = async (req, res) => {
 };
 
 const getForms = async (req, res) => {
-  console.log(req.query.page,'kkkkkkkkkk');
+  console.log(req.query.page, 'kkkkkkkkkk');
   let page = req.query.page;
   //   let limit = req.query.limit ;
-  let start = (page - 1) * 30;
+  let start = page ? (page - 1) * 30 : 0;
   let end = page * 30;
   try {
-    let data = await Form.find({}).sort({ formNumber: -1 }).skip(start).limit(30);
-    if(!page){
-      data = await Form.find({});
-    }
-    return res.status(200).json({ len: data[0]?data[0].formNumber:1, data: data });
+    let data = await Form.find({}).sort({ formNumber: 1 }).skip(start).limit(30);
+    let sz = await Form.aggregate([
+      {
+        $project: {
+          formNumber: {
+            $toInt: "$formNumber"
+          }
+        }
+      },
+      {
+        $sort: {
+          formNumber: -1
+        }
+      },{
+        $limit:1
+      }
+    ]);
+    return res.status(200).json({ len: sz[0] ? sz[0].formNumber : 1, data: data });
 
     return res.status(200).json(data);
   } catch (error) {
@@ -252,27 +280,42 @@ const getForms = async (req, res) => {
     return res.status(400).json(error);
   }
 };
-const deleteAll = async(req,res)=>{
-     try{
-       await Form.deleteMany({beneficiary:false})
-       return res.status(200).json('deleted')
-     }catch(e){
-       console.log(e)
-       return res.status(400).json(e);
-     }
+const deleteAll = async (req, res) => {
+  try {
+    await Form.deleteMany({ beneficiary: false })
+    return res.status(200).json('deleted')
+  } catch (e) {
+    console.log(e)
+    return res.status(400).json(e);
+  }
 }
 const getMostafidForms = async (req, res) => {
- // console.log(req.query.page,'kkkkkkkkkk');
   let page = req.query.page;
-  //   let limit = req.query.limit ;
-  let start = (page - 1) * 30;
+  let start = page ? (page - 1) * 30 : 0;
   let end = page * 30;
   try {
-    let data = await Form.find({beneficiary:true}).sort({ createdAt: -1 }).skip(start).limit(30);
-    if(!page){
+    let sz = await Form.aggregate([
+      {
+        $project: {
+          formNumber: {
+            $toInt: "$formNumber"
+          }
+        }
+      },
+      {
+        $sort: {
+          formNumber: -1
+        }
+      }, {
+        $limit: 1
+      }
+    ]);
+
+    let data = await Form.find({ beneficiary: true }).sort({ createdAt: -1 }).skip(start).limit(30);
+    if (!page) {
       data = await Form.find({});
     }
-    return res.status(200).json({ len: data[0]?data[0].formNumber:1, data: data });
+    return res.status(200).json({ len: sz[0] ? sz[0].formNumber : 1, data: data });
 
     return res.status(200).json(data);
   } catch (error) {
@@ -281,17 +324,30 @@ const getMostafidForms = async (req, res) => {
   }
 };
 const getMshMostafidForms = async (req, res) => {
- // console.log(req.query.page,'kkkkkkkkkk');
+  // console.log(req.query.page,'kkkkkkkkkk');
   let page = req.query.page;
   //   let limit = req.query.limit ;
-  let start = (page - 1) * 30;
+  let start = page ? (page - 1) * 30 : 0;
   let end = page * 30;
   try {
-    let data = await Form.find({beneficiary:false}).sort({ createdAt: -1 }).skip(start).limit(30);
-    if(!page){
-      data = await Form.find({});
-    }
-    return res.status(200).json({ len: data[0]?data[0].formNumber:1, data: data });
+    let data = await Form.find({ beneficiary: false }).sort({ createdAt: -1 }).skip(start).limit(30);
+    let sz = await Form.aggregate([
+      {
+        $project: {
+          formNumber: {
+            $toInt: "$formNumber"
+          }
+        }
+      },
+      {
+        $sort: {
+          formNumber: -1
+        }
+      }, {
+        $limit: 1
+      }
+    ]);
+    return res.status(200).json({ len: sz[0] ? sz[0].formNumber : 1, data: data });
 
     return res.status(200).json(data);
   } catch (error) {
@@ -301,16 +357,16 @@ const getMshMostafidForms = async (req, res) => {
 };
 
 const deleteForm = async (req, res) => {
-   console.log(req.user)
-  if (!req.user.admin &&  !req.user.role.includes("delete"))
+  console.log(req.user)
+  if (!req.user.admin && !req.user.role.includes("delete"))
     return res.status(400).json("user is not authorized");
 
   if (mongoose.isValidObjectId(req.params.id)) {
     const form = await Form.findById(req.params.id);
-   
+
     try {
       await Form.findByIdAndRemove(req.params.id);
-      if(!req.user.hidden){
+      if (!req.user.hidden) {
         await Log.create({
           type: "حذف",
           user: req.user.name,
@@ -332,13 +388,13 @@ const deleteForm = async (req, res) => {
 const getMyForms = async (req, res) => {
   console.log(String(req.params.id));
   try {
-    const numbers = await Print.find({}).sort({number:-1}).limit(1);
-   // console.log(numbers[0].number)
+    const numbers = await Print.find({}).sort({ number: -1 }).limit(1);
+    // console.log(numbers[0].number)
     const forms = await Form.findById(req.params.id);
- //   console.log(forms)
+    //   console.log(forms)
     forms.number = numbers[0].number - 1;
     return res.status(200).json(forms);
-    
+
   } catch (error) {
     console.log('errx', error);
     return res.status(400).json(error);
@@ -367,16 +423,16 @@ const filter = async (req, res) => {
   try {
     let filterData = []
     if (req.body.searchType == "fullName") {
-      filterData = await Form.find( {"fullName" : {$regex : searchValue}}).sort({createdAt:-1}).skip(start).limit(end);
+      filterData = await Form.find({ "fullName": { $regex: searchValue } }).sort({ createdAt: -1 }).skip(start).limit(end);
     }
     if (req.body.searchType == "assignDate") {
-      filterData = await Form.find( {"assignDate" : {$regex : searchValue}}).sort({createdAt:-1}).skip(start).limit(end);
+      filterData = await Form.find({ "assignDate": { $regex: searchValue } }).sort({ createdAt: -1 }).skip(start).limit(end);
     }
     if (req.body.searchType == "formNumber") {
-      filterData = await Form.find( {"formNumber" : searchValue}).sort({createdAt:-1}).skip(start).limit(end);
+      filterData = await Form.find({ "formNumber": searchValue }).sort({ createdAt: -1 }).skip(start).limit(end);
     }
     if (req.body.searchType == "husbandName") {
-      filterData = await Form.find( {"husbandName" : {$regex : searchValue}}).sort({createdAt:-1}).skip(start).limit(end);
+      filterData = await Form.find({ "husbandName": { $regex: searchValue } }).sort({ createdAt: -1 }).skip(start).limit(end);
     }
     return res.status(200).json(filterData);
   } catch (error) {
@@ -397,28 +453,28 @@ const getForms2 = async (req, res) => {
     ) {
       await Form.find({
         $or: [
-          {"husbandName" : {$regex : search}}
+          { "husbandName": { $regex: search } }
           ,
-          {"fullName" : {$regex : search}},
-          {"area" : {$regex : search}},
-          {"assignDate" : {$regex: search}},
-          { "formNumber": {$regex: search} },
-          { "pieceNumber": {$regex: search} },
-          { "department": {$regex: search} },
-          { "paperNumber": {$regex: search} },
-          { "recordNumber": {$regex: search} },
-          { "motherName": {$regex: search} },
-          { "classType": {$regex: search} },
-          { "addressNubmer": {$regex: search} },
-          { "birthPlace": {$regex: search} },
+          { "fullName": { $regex: search } },
+          { "area": { $regex: search } },
+          { "assignDate": { $regex: search } },
+          { "formNumber": { $regex: search } },
+          { "pieceNumber": { $regex: search } },
+          { "department": { $regex: search } },
+          { "paperNumber": { $regex: search } },
+          { "recordNumber": { $regex: search } },
+          { "motherName": { $regex: search } },
+          { "classType": { $regex: search } },
+          { "addressNubmer": { $regex: search } },
+          { "birthPlace": { $regex: search } },
         ],
       }).sort({ createdAt: -1 })
         .skip(start)
-        .limit(page * 30).then((data)=>{
-          for(let i = 0; i < data.length ;++i){
-            if(data[i]["husbandName"]?.includes(search) || data[i]["fullName"]?.includes(search) || data[i]["area"]?.includes(search) ||
-               data[i]["assignDate"]?.includes(search) || data[i]["formNumber"]?.includes(search) || data[i]["pieceNumber"]?.includes(search) ||
-              data[i]["department"]?.includes(search) || data[i]["paperNumber"]?.includes(search) || data[i]["recordNumber"]?.includes(search) || 
+        .limit(page * 30).then((data) => {
+          for (let i = 0; i < data.length; ++i) {
+            if (data[i]["husbandName"]?.includes(search) || data[i]["fullName"]?.includes(search) || data[i]["area"]?.includes(search) ||
+              data[i]["assignDate"]?.includes(search) || data[i]["formNumber"]?.includes(search) || data[i]["pieceNumber"]?.includes(search) ||
+              data[i]["department"]?.includes(search) || data[i]["paperNumber"]?.includes(search) || data[i]["recordNumber"]?.includes(search) ||
               data[i]["motherName"]?.includes(search) || data[i]["classType"]?.includes(search) || data[i]["birthPlace"]?.includes(search))
               response.push(data[i])
           }
@@ -438,17 +494,17 @@ const getForms2 = async (req, res) => {
   }
 };
 
-const editPrintNumber = async(req,res)=>{
+const editPrintNumber = async (req, res) => {
   console.log(req.body)
-  if(!req.body.id || !req.body.number ) return  res.status(400).json("id is not valid");
-  try{
-    await Print.findOneAndUpdate({number:req.body.number},{number : req.body.number + 1})
-    let data = await Form.findByIdAndUpdate(req.body.id,{number:req.body.number});
+  if (!req.body.id || !req.body.number) return res.status(400).json("id is not valid");
+  try {
+    await Print.findOneAndUpdate({ number: req.body.number }, { number: req.body.number + 1 })
+    let data = await Form.findByIdAndUpdate(req.body.id, { number: req.body.number });
     data.number = req.body.number
     return res.status(200).json(data)
   }
-  catch(e){
-    return  res.status(500).json(e);
+  catch (e) {
+    return res.status(500).json(e);
   }
 }
 
